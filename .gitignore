@@ -26,6 +26,42 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Logs
+antispam.log
+
+# Settings
+config/settings.py
+config/settings.pyc
+config/settings.pyo
+config/settings.pyd
+config/settings.pyw
+config/settings.pyz
+config/settings.pyj
+config/settings.pyjx
+config/settings.pyjz
+
+
+# Database
+antispam.db
+antispam.db-journal
+antispam.db-wal
+antispam.db-shm
+antispam.db-trace
+antispam.db-trace-journal
+antispam.db-trace-wal
+antispam.db-trace-shm
+
+# Session
+antispam.session
+antispam.session-journal
+antispam.session-wal
+antispam.session-shm
+antispam.session-trace
+antispam.session-trace-journal
+antispam.session-trace-wal
+antispam.session-trace-shm
+
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.

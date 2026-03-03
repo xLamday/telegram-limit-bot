@@ -4,7 +4,7 @@ Utility per la gestione dei permessi Telegram.
 
 import logging
 from telethon import TelegramClient
-from telethon.errors import UserNotParticipantError
+from telethon.errors import UserAdminInvalidError, UserNotParticipantError
 from telethon.tl.functions.channels import GetParticipantRequest
 from telethon.tl.types import ChannelParticipantAdmin, ChannelParticipantCreator, ChatBannedRights
 import time
@@ -31,6 +31,8 @@ async def is_admin(client: TelegramClient, chat, user_id: int) -> bool:
         p = await client(GetParticipantRequest(chat, user_id))
         return isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
     except UserNotParticipantError:
+        return False
+    except UserAdminInvalidError:
         return False
     except Exception as e:
         logger.warning(f"Errore controllo admin per {user_id}: {e}")
