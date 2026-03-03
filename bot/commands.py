@@ -9,6 +9,8 @@ from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
 import asyncio
 
+from telethon.types import ChannelParticipantAdmin
+
 from config.settings import CFG
 from db import db
 from utils.permissions import is_admin
@@ -29,6 +31,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         chat = await event.get_chat()
 
         if db.group_exists(chat.id):
+            await event.reply("❌ Gruppo già registrato nel database.")
             return False
 
         db.upsert_group(chat.id, chat.title)
