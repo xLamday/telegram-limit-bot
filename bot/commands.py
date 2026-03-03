@@ -27,12 +27,11 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-        db.upsert_group(chat.id, chat.title)
 
         if db.group_exists(chat.id):
-            await event.reply(f"Questo gruppo già esiste.")
-            logger.info(f"Gruppo {chat.id}, {chat.title} è già registrato nel database")
-            return
+            return False
+
+        db.upsert_group(chat.id, chat.title)
 
         count = 0
         async for user in client.iter_participants(chat):
@@ -85,7 +84,6 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             db.set_user(chat.id, user.id, "free")
             await client.edit_permissions(chat, user.id, send_messages=True)
             await event.reply(f"✅ {user.first_name} liberato permanentemente.")
-            logger.info(f"Liberato utente {user.id} ({user.first_name})")
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds)
             await event.reply("⚠️ Rate limit Telegram: riprova tra qualche secondo.")

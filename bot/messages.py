@@ -43,6 +43,11 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
             return
         _last_event[dedup_key] = now
 
+        # Ignora completamente i gruppi NON registrati nel DB.
+        # Il bot opera solo dove è stato esplicitamente attivato con /registragruppo.
+        if not db.group_exists(chat.id):
+            return
+
         # Salta se è admin
         if await is_admin(client, chat, user.id):
             return
@@ -51,8 +56,6 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
         status = db.get_user_status(chat.id, user.id)
         if status is None:
             # Nuovo utente in un gruppo registrato → registra come limited
-            if not db.group_exists(chat.id):
-                return  # gruppo non gestito → ignora
             db.set_user(chat.id, user.id, "limited")
             status = "limited"
 
