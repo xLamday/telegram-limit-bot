@@ -35,3 +35,32 @@ async def is_admin(client: TelegramClient, chat, user_id: int) -> bool:
     except Exception as e:
         logger.warning(f"Errore controllo admin per {user_id}: {e}")
         return True  # fail-safe
+
+async def is_authorized_admin(event, client) -> bool:
+    from config.settings import CFG
+
+    sender_id = event.sender_id
+    chat_id = event.chat_id
+
+    logger.debug(f"[AUTH] sender_id={sender_id} | chat_id={chat_id} | admin_id={CFG.admin_id}")
+
+    # Caso normale: utente non anonimo
+    if sender_id == CFG.admin_id:
+        logger.debug("[AUTH] ✅ Match diretto sender_id == admin_id")
+        return True
+
+    # Caso anonimo: sender_id è None OPPURE uguale al chat_id
+    if sender_id is None or sender_id == chat_id:
+        logger.debug("[AUTH] 🎭 Sender anonimo rilevato, verifico se admin_id è admin del gruppo...")
+        try:
+            p = await client(GetParticipantRequest(chat_id, CFG.admin_id))
+            logger.debug(f"[AUTH] Participant trovato: {p.participant}")
+            result = isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
+            logger.debug(f"[AUTH] È admin/creator? {result}")
+            return result
+        except Exception as e:
+            logger.debug(f"[AUTH] ❌ Eccezione: {e}")
+            return False
+
+    logger.debug(f"[AUTH] ❌ Nessun caso matched")
+    return False

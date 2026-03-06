@@ -11,7 +11,7 @@ from telethon import TelegramClient, events
 
 from config.settings import CFG
 from db import db
-from utils.permissions import is_admin
+from utils.permissions import is_admin, is_authorized_admin  # ← aggiunto
 from bot.mute_queue import MuteQueue, MuteTask
 
 logger = logging.getLogger("antispam.messages")
@@ -27,7 +27,7 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
         # Ignora messaggi privati, dell'admin e del bot stesso
         if event.is_private:
             return
-        if event.sender_id in (CFG.admin_id, me_id):
+        if await is_authorized_admin(event, client) or event.sender_id == me_id:
             return
 
         chat = await event.get_chat()

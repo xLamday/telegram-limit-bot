@@ -13,7 +13,7 @@ from bot.mute_queue import MuteQueue
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    level=logging.INFO,
+    level=logging.DEBUG,
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler("antispam.log", encoding="utf-8"),
