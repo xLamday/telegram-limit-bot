@@ -5,15 +5,14 @@ Handlers dei comandi admin del bot.
 import logging
 import time
 
-from telethon import TelegramClient, events, functions, types
+from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
+from telethon.tl.types import ChannelParticipantsAdmins as _ChannelParticipantsAdmins
 import asyncio
-
-from telethon.types import ChannelParticipantAdmin, ChatAdminRights
 
 from config.settings import CFG
 from db import db
-from utils.permissions import is_admin, is_authorized_admin  # ← aggiunto
+from utils.permissions import imposta_anonimo
 from bot.mute_queue import MuteQueue, MuteTask
 
 logger = logging.getLogger("antispam.commands")
@@ -25,73 +24,78 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/registragruppo"))
     async def cmd_registragruppo(event):
-
-        # DOPO (in tutti i comandi)
-        if not await is_authorized_admin(event, client):
+        if event.sender_id != CFG.admin_id:
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-
-        if db.group_exists(chat.id):
-            await event.reply("❌ Gruppo già registrato nel database.")
-            return False
-
         db.upsert_group(chat.id, chat.title)
 
-        # ── Rendi il userbot admin anonimo ────────────────────────────────
-        try:
-            me = await client.get_me()
-            await client(functions.channels.EditAdminRequest(
-                channel=chat,
-                user_id=me.id,
-                admin_rights=types.ChatAdminRights(
-                    change_info=False,
-                    post_messages=False,
-                    edit_messages=False,
-                    delete_messages=True,
-                    ban_users=True,
-                    invite_users=True,
-                    pin_messages=False,
-                    add_admins=False,
-                    anonymous=True,   # ← nasconde il nome, usa quello del gruppo
-                    manage_call=False,
-                    other=True,
-                ),
-                rank="Admin"
-            ))
-            logger.info(f"Userbot impostato come admin anonimo in {chat.id}")
-        except Exception as e:
-            logger.warning(f"Impossibile impostare admin anonimo in {chat.id}: {e}")
-            await event.reply(f"⚠️ Admin anonimo non impostato: {e}\nProcedo comunque con la registrazione.")
-        # ─────────────────────────────────────────────────────────────────
+        # Imposta l'userbot come anonimo nel gruppo
+        await imposta_anonimo(client, chat)
 
-        count = 0
+        await event.reply(
+            f"⏳ Registrazione <b>{chat.title}</b> in corso…\n"
+            f"Sto raccogliendo la lista degli admin.",
+            parse_mode="html",
+        )
+
+        # ── FASE 1: raccogli tutti gli admin con una sola chiamata filtrata ──
+        # iter_participants con filter=admins usa l'endpoint channels.getParticipants
+        # con flag ADMINS → una sola richiesta, nessuna chiamata per-utente.
+        admin_ids: set[int] = set()
+        async for admin in client.iter_participants(
+            chat, filter=_ChannelParticipantsAdmins()
+        ):
+            if admin.bot:
+                continue
+            admin_ids.add(admin.id)
+            logger.debug(f"Admin trovato: {admin.id} ({getattr(admin, 'first_name', '?')})")
+
+        await event.reply(
+            f"✅ Registrazione del canale <b>{chat.title}</b> completata\n"
+            f"Admin raccolti, inizio a salvare gli admin nel database.",
+            parse_mode="html",
+        )
+
+        # Salva tutti gli admin nel DB in una transazione unica
+        if admin_ids:
+            db.bulk_set_admins(chat.id, list(admin_ids))
+        logger.info(f"Gruppo {chat.id}: {len(admin_ids)} admin registrati.")
+
+        
+        await event.reply(
+            f"✅ Raccolta admin <b>{chat.title}</b> completata\n"
+            f"Admin registrati nel database, procedo con il mute.",
+            parse_mode="html",
+        )
+
+        # ── FASE 2: itera TUTTI i membri e muta chi non è admin ──
+        muted_count = 0
         async for user in client.iter_participants(chat):
             if user.bot:
                 continue
-            if await is_admin(client, chat, user.id):
-                continue
+            if user.id in admin_ids:
+                continue  # skip admin — non toccarli
             existing = db.get_user_status(chat.id, user.id)
-            if existing == "free":
-                continue
+            if existing in ("free", "admin"):
+                continue  # già esenti
             db.set_user(chat.id, user.id, "limited")
             await mute_queue.enqueue(MuteTask(chat, user.id, chat.id))
-            count += 1
+            muted_count += 1
 
         await event.reply(
             f"✅ Gruppo <b>{chat.title}</b> registrato.\n"
-            f"👥 {count} utenti accodati per mute.",
+            f"🛡 {len(admin_ids)} admin esentati.\n"
+            f"🔇 {muted_count} utenti accodati per mute (72h).",
             parse_mode="html",
         )
-        logger.info(f"Gruppo {chat.id} registrato. {count} utenti accodati.")
+        logger.info(f"Gruppo {chat.id}: {muted_count} utenti accodati per mute.")
 
     # ── /limita ────────────────────────────────────────────────────────────
 
     @client.on(events.NewMessage(pattern=r"/limita (.+)"))
     async def cmd_limita(event):
-
-        # DOPO (in tutti i comandi)
-        if not await is_authorized_admin(event, client):
+        if event.sender_id != CFG.admin_id:
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
@@ -108,9 +112,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/free (.+)"))
     async def cmd_free(event):
-
-        # DOPO (in tutti i comandi)
-        if not await is_authorized_admin(event, client):
+        if event.sender_id != CFG.admin_id:
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
@@ -130,9 +132,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/log"))
     async def cmd_log(event):
-
-        # DOPO (in tutti i comandi)
-        if not await is_authorized_admin(event, client):
+        if event.sender_id != CFG.admin_id:
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
@@ -154,9 +154,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/gruppi"))
     async def cmd_gruppi(event):
-
-        # DOPO (in tutti i comandi)
-        if not await is_authorized_admin(event, client):
+        if event.sender_id != CFG.admin_id:
             return await event.reply("❌ Non sei autorizzato.")
 
         groups = db.list_groups()

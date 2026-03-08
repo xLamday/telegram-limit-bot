@@ -22,10 +22,10 @@ class Config:
     mute_hours: int     = 72
 
     # Secondi di pausa tra un'operazione di mute e la successiva (anti-flood)
-    mute_rate_limit: float = 0.5
+    mute_rate_limit: float = 1.5
 
     # Finestra di deduplicazione messaggi per utente (secondi)
-    dedup_window: float = 5.0
+    dedup_window: float = 12.5
 
 
 CFG = Config()

@@ -104,6 +104,20 @@ class Database:
             )
         logger.debug(f"Utente {user_id} in gruppo {group_id} → {status}")
 
+    def bulk_set_admins(self, group_id: int, admin_ids: list[int]):
+        """Registra una lista di admin in un'unica transazione.
+        Non sovrascrive chi era già 'free' (privilegio più alto)."""
+        with self._cursor() as cur:
+            cur.executemany(
+                """INSERT INTO users (group_id, user_id, status, updated_at)
+                   VALUES (?,?,'admin',strftime('%s','now'))
+                   ON CONFLICT(group_id, user_id) DO UPDATE SET
+                       status = CASE WHEN status = 'free' THEN 'free' ELSE 'admin' END,
+                       updated_at = strftime('%s','now')""",
+                [(group_id, uid) for uid in admin_ids],
+            )
+        logger.debug(f"Gruppo {group_id}: {len(admin_ids)} admin salvati nel DB.")
+
     def get_user_status(self, group_id: int, user_id: int) -> Optional[str]:
         with self._cursor() as cur:
             cur.execute(
