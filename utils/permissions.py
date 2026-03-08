@@ -43,7 +43,7 @@ async def is_admin(client: TelegramClient, chat, user_id: int) -> bool:
         return True  # fail-safe
 
 
-async def set_anonymous(client: TelegramClient, chat) -> bool:
+async def imposta_anonimo(client: TelegramClient, chat) -> bool:
     """
     Imposta l'userbot come admin anonimo nel gruppo, nascondendo il nome
     reale dietro al titolo del gruppo nelle azioni visibili agli altri membri.
