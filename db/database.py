@@ -5,11 +5,12 @@ Layer database — SQLite thread-safe con WAL mode.
 import sqlite3
 import threading
 import time
-import logging
+from loggerinfo import LoggerInfo
 from contextlib import contextmanager
 from typing import Optional
 
-logger = logging.getLogger("antispam.db")
+
+logger = LoggerInfo("antispam.DB").get_logger()
 
 
 class Database:

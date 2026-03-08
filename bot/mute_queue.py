@@ -11,7 +11,7 @@ Design:
 """
 
 import asyncio
-import logging
+from loggerinfo import LoggerInfo
 import random
 import time
 from dataclasses import dataclass, field
@@ -28,7 +28,7 @@ from telethon.errors import (
 from config.settings import CFG
 from db import db
 
-logger = logging.getLogger("antispam.mute_queue")
+logger = LoggerInfo("antispam.mute_queue").get_logger()
 
 # Concorrenza massima verso Telegram (quante edit_permissions in parallelo)
 _SEMAPHORE_LIMIT = 3

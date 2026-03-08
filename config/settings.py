@@ -2,8 +2,8 @@
 Configurazione centralizzata del bot.
 """
 
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field
+from typing import List
 
 @dataclass
 class Config:
@@ -13,7 +13,7 @@ class Config:
     session_name: str   = "antispam"
 
     # ID Telegram dell'amministratore del bot
-    admin_id: int       = 961492841
+    admin_id: List[int]       = field(default_factory=lambda: [961492841, 8218960547])
 
     # Percorso del database SQLite
     db_path: str        = "antispam.db"

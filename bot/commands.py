@@ -2,7 +2,8 @@
 Handlers dei comandi admin del bot.
 """
 
-import logging
+
+from loggerinfo import LoggerInfo
 import time
 
 from telethon import TelegramClient, events
@@ -12,10 +13,11 @@ import asyncio
 
 from config.settings import CFG
 from db import db
-from utils.permissions import imposta_anonimo
+from utils.permissions import imposta_anonimo, is_authorized_admin
 from bot.mute_queue import MuteQueue, MuteTask
 
-logger = logging.getLogger("antispam.commands")
+
+logger = LoggerInfo("antispam.commands").get_logger()
 
 
 def register_commands(client: TelegramClient, mute_queue: MuteQueue):
@@ -24,14 +26,25 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/registragruppo"))
     async def cmd_registragruppo(event):
-        if event.sender_id != CFG.admin_id:
-            return await event.reply("❌ Non sei autorizzato.")
+
+        if event.is_private:
+            return
+
+        if not await is_authorized_admin(event, client):
+           logger.info(f"L'utente {event.sender.first_name}, ha provato a usare il comando.")
+           return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-        db.upsert_group(chat.id, chat.title)
 
+        if db.group_exists(chat.id):
+            await event.reply("❌ Gruppo già registrato nel database.")
+            return False
+
+        
         # Imposta l'userbot come anonimo nel gruppo
-        await imposta_anonimo(client, chat)
+        await imposta_anonimo(client, chat)            
+        
+        db.upsert_group(chat.id, chat.title)
 
         await event.reply(
             f"⏳ Registrazione <b>{chat.title}</b> in corso…\n"
@@ -89,14 +102,18 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             f"🔇 {muted_count} utenti accodati per mute (72h).",
             parse_mode="html",
         )
-        logger.info(f"Gruppo {chat.id}: {muted_count} utenti accodati per mute.")
+        logger.info(f"Gruppo {chat.id}, {chat.title}: {muted_count} utenti accodati per mute.")
 
     # ── /limita ────────────────────────────────────────────────────────────
 
     @client.on(events.NewMessage(pattern=r"/limita (.+)"))
     async def cmd_limita(event):
-        if event.sender_id != CFG.admin_id:
-            return await event.reply("❌ Non sei autorizzato.")
+
+        if event.is_private:
+            return
+
+        if not await is_authorized_admin(event, client):
+           return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
         target = event.pattern_match.group(1).strip()
@@ -112,8 +129,8 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/free (.+)"))
     async def cmd_free(event):
-        if event.sender_id != CFG.admin_id:
-            return await event.reply("❌ Non sei autorizzato.")
+        if not await is_authorized_admin(event, client):
+           return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
         target = event.pattern_match.group(1).strip()
@@ -132,8 +149,13 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/log"))
     async def cmd_log(event):
-        if event.sender_id != CFG.admin_id:
-            return await event.reply("❌ Non sei autorizzato.")
+
+
+        if event.is_private:
+            return
+
+        if not await is_authorized_admin(event, client):
+           return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
         rows = db.list_users(chat.id)
@@ -154,8 +176,12 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     @client.on(events.NewMessage(pattern=r"/gruppi"))
     async def cmd_gruppi(event):
-        if event.sender_id != CFG.admin_id:
-            return await event.reply("❌ Non sei autorizzato.")
+
+        if event.is_private:
+            return
+
+        if not await is_authorized_admin(event, client):
+           return await event.reply("❌ Non sei autorizzato.")
 
         groups = db.list_groups()
         if not groups:

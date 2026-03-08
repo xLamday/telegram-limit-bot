@@ -2,8 +2,9 @@
 Utility per la gestione dei permessi Telegram.
 """
 
-import logging
+from loggerinfo import LoggerInfo
 import time
+from config.settings import CFG
 
 from telethon import TelegramClient
 from telethon.errors import UserNotParticipantError
@@ -15,7 +16,7 @@ from telethon.tl.types import (
     ChatBannedRights,
 )
 
-logger = logging.getLogger("antispam.utils.permissions")
+logger = LoggerInfo("antispam.utils.permissions").get_logger()
 
 
 def mute_rights(hours: int) -> ChatBannedRights:
@@ -42,6 +43,36 @@ async def is_admin(client: TelegramClient, chat, user_id: int) -> bool:
         logger.warning(f"Errore controllo admin per {user_id}: {e}")
         return True  # fail-safe
 
+async def is_authorized_admin(event, client) -> bool:
+
+    if event.is_private:
+        return
+
+    sender_id = event.sender_id
+    chat_id = event.chat_id
+
+    # Caso anonimo: sender_id è None OPPURE uguale al chat_id
+    logger.debug(f"[AUTH] sender_id={sender_id} | chat_id={chat_id} | admin_id={CFG.admin_id}")
+
+
+    if sender_id in CFG.admin_id:
+        logger.debug("[AUTH] ✅ Match diretto sender_id == admin_id")
+        return True
+
+    if sender_id is None or sender_id == chat_id:
+        logger.debug("[AUTH] 🎭 Sender anonimo rilevato, verifico se admin_id è admin del gruppo...")
+        try:
+            p = await client(GetParticipantRequest(chat_id, CFG.admin_id))
+            logger.debug(f"[AUTH] Participant trovato: {p.participant}")
+            result = isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
+            logger.debug(f"[AUTH] È admin/creator? {result}")
+            return result
+        except Exception as e:
+            logger.debug(f"[AUTH] ❌ Eccezione: {e}")
+            return False
+
+    logger.debug(f"[AUTH] ❌ Nessun caso matched")
+    return False
 
 async def imposta_anonimo(client: TelegramClient, chat) -> bool:
     """
@@ -69,7 +100,7 @@ async def imposta_anonimo(client: TelegramClient, chat) -> bool:
                 manage_call=False,
                 other=True,
             ),
-            rank="Bot",
+            rank="Admin",
         ))
         logger.info(f"Userbot impostato come anonimo in {chat.id}.")
         return True

@@ -6,7 +6,7 @@ Verifica che il bot (userbot) sia admin in tutti i gruppi registrati.
 - Può essere chiamato all'avvio e/o schedulato periodicamente
 """
 
-import logging
+from loggerinfo import LoggerInfo
 from typing import Optional
 
 from telethon import TelegramClient
@@ -21,7 +21,8 @@ from telethon.tl.types import (
 from config.settings import CFG
 from db import db
 
-logger = logging.getLogger("antispam.admin_check")
+
+logger = LoggerInfo("antispam.utils.admin").get_logger()
 
 
 async def check_admin_in_registered_groups(client: TelegramClient) -> list[int]:
