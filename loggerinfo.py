@@ -3,7 +3,13 @@ import os
 from logging.handlers import RotatingFileHandler
 
 class LoggerInfo:
-    """Classe per creare logger avanzati con file, console e formatter personalizzati."""
+    """
+    Factory per logger applicativi.
+
+    Note:
+    - Evita handler duplicati (comune quando moduli importano più volte il logger)
+    - Log su console + file rotante (in `logs/`)
+    """
 
     def __init__(self, name: str = __name__, log_dir: str = "logs", log_file: str = "bot.log", level=logging.DEBUG):
         self.name = name
@@ -15,7 +21,7 @@ class LoggerInfo:
 
         # Crea il logger
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(level)
+        self.logger.setLevel(level if self.logger.level == logging.NOTSET else self.logger.level)
         self.logger.propagate = False  # evita duplicazione log
 
         # Formatter avanzato
@@ -46,5 +52,5 @@ class LoggerInfo:
 
 
 
-    def get_logger(self):
+    def get_logger(self) -> logging.Logger:
         return self.logger

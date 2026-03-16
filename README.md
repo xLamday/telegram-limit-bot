@@ -56,9 +56,20 @@ Modifica `config/settings.py`:
 ```python
 api_id   = ...          # da https://my.telegram.org
 api_hash = "..."
-admin_id = ...          # tuo user_id Telegram
+admin_ids = [...]       # lista di user_id Telegram autorizzati (es. [123, 456])
 
 mute_hours      = 72    # ore di mute per utenti limitati
 mute_rate_limit = 0.5   # secondi di pausa tra un mute e il successivo
 dedup_window    = 5.0   # ignora messaggi ripetuti dello stesso utente entro N secondi
 ```
+
+In alternativa (consigliato), usa variabili d'ambiente:
+
+- `TELEGRAM_API_ID`
+- `TELEGRAM_API_HASH`
+- `TELEGRAM_SESSION`
+- `TELEGRAM_ADMIN_IDS` (csv: `123,456`)
+- `ANTISPAM_DB_PATH`
+- `ANTISPAM_MUTE_HOURS`
+- `ANTISPAM_MUTE_RATE_LIMIT`
+- `ANTISPAM_DEDUP_WINDOW`

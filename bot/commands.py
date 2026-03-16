@@ -2,7 +2,6 @@
 Handlers dei comandi admin del bot.
 """
 
-
 from loggerinfo import LoggerInfo
 import time
 
@@ -20,7 +19,19 @@ from bot.mute_queue import MuteQueue, MuteTask
 logger = LoggerInfo("antispam.commands").get_logger()
 
 
+def _display_name(user) -> str:
+    """Restituisce un nickname leggibile a partire da un oggetto User Telethon."""
+    username = getattr(user, "username", None)
+    if username:
+        return f"@{username}"
+    first = getattr(user, "first_name", None) or ""
+    last = getattr(user, "last_name", None) or ""
+    full = (first + " " + last).strip()
+    return full or str(getattr(user, "id", "?"))
+
+
 def register_commands(client: TelegramClient, mute_queue: MuteQueue):
+    """Registra sul client Telethon i comandi admin (/registragruppo, /limita, /free, /aggiungi_admin, /log, /gruppi, /utenti)."""
 
     # ── /registragruppo ────────────────────────────────────────────────────
 
@@ -31,8 +42,13 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return
 
         if not await is_authorized_admin(event, client):
-           logger.info(f"L'utente {event.sender.first_name}, ha provato a usare il comando.")
-           return await event.reply("❌ Non sei autorizzato.")
+            try:
+                sender = await event.get_sender()
+                who = getattr(sender, "first_name", None) or str(event.sender_id)
+            except Exception:
+                who = str(event.sender_id)
+            logger.info(f"Utente non autorizzato ha provato /registragruppo: {who}")
+            return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
 
@@ -92,7 +108,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             existing = db.get_user_status(chat.id, user.id)
             if existing in ("free", "admin"):
                 continue  # già esenti
-            db.set_user(chat.id, user.id, "limited")
+            db.set_user(chat.id, user.id, "limited", _display_name(user))
             await mute_queue.enqueue(MuteTask(chat, user.id, chat.id))
             muted_count += 1
 
@@ -113,37 +129,89 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return
 
         if not await is_authorized_admin(event, client):
-           return await event.reply("❌ Non sei autorizzato.")
+            return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-        target = event.pattern_match.group(1).strip()
+        raw_target = event.pattern_match.group(1).strip()
+
+        # Supporta sia username che ID numerico
+        if raw_target.lstrip("-").isdigit():
+            target = int(raw_target)
+        else:
+            target = raw_target
+
         try:
             user = await client.get_entity(target)
-            db.set_user(chat.id, user.id, "limited")
+            db.set_user(chat.id, user.id, "limited", _display_name(user))
             await mute_queue.enqueue(MuteTask(chat, user.id, chat.id))
             await event.reply(f"🔇 {user.first_name} limitato per {CFG.mute_hours} ore.")
-        except Exception as e:
-            await event.reply(f"⚠️ Errore: {e}")
+        except Exception:
+            logger.exception("Errore /limita", extra={"chat_id": chat.id, "target": target})
+            await event.reply("⚠️ Errore durante il comando. Controlla i log.")
 
     # ── /free ──────────────────────────────────────────────────────────────
 
     @client.on(events.NewMessage(pattern=r"/free (.+)"))
     async def cmd_free(event):
+        if event.is_private:
+            return
+
         if not await is_authorized_admin(event, client):
-           return await event.reply("❌ Non sei autorizzato.")
+            return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-        target = event.pattern_match.group(1).strip()
+        raw_target = event.pattern_match.group(1).strip()
+
+        # Supporta sia username che ID numerico
+        if raw_target.lstrip("-").isdigit():
+            target = int(raw_target)
+        else:
+            target = raw_target
+
         try:
             user = await client.get_entity(target)
-            db.set_user(chat.id, user.id, "free")
+            db.set_user(chat.id, user.id, "free", _display_name(user))
             await client.edit_permissions(chat, user.id, send_messages=True)
             await event.reply(f"✅ {user.first_name} liberato permanentemente.")
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds)
             await event.reply("⚠️ Rate limit Telegram: riprova tra qualche secondo.")
-        except Exception as e:
-            await event.reply(f"⚠️ Errore: {e}")
+        except Exception:
+            logger.exception("Errore /free", extra={"chat_id": chat.id, "target": target})
+            await event.reply("⚠️ Errore durante il comando. Controlla i log.")
+
+    # ── /aggiungi_admin ─────────────────────────────────────────────────────
+
+    @client.on(events.NewMessage(pattern=r"/aggiungi_admin (.+)"))
+    async def cmd_aggiungi_admin(event):
+        if event.is_private:
+            return
+
+        if not await is_authorized_admin(event, client):
+            return await event.reply("❌ Non sei autorizzato.")
+
+        chat = await event.get_chat()
+        raw_target = event.pattern_match.group(1).strip()
+
+        # Supporta sia username che ID numerico, come /free e /limita
+        if raw_target.lstrip("-").isdigit():
+            target = int(raw_target)
+        else:
+            target = raw_target
+
+        try:
+            user = await client.get_entity(target)
+            db.set_user(chat.id, user.id, "admin", _display_name(user))
+            # Rimuove subito il mute (se presente)
+            await client.edit_permissions(chat, user.id, send_messages=True)
+            await client.edit_admin(chat, user.id, is_admin=True)
+            await event.reply(f"✅ {user.first_name} ora è registrato come admin ed è stato smutato.")
+        except FloodWaitError as e:
+            await asyncio.sleep(e.seconds)
+            await event.reply("⚠️ Rate limit Telegram: riprova tra qualche secondo.")
+        except Exception:
+            logger.exception("Errore /aggiungi_admin", extra={"chat_id": chat.id, "target": target})
+            await event.reply("⚠️ Errore durante il comando. Controlla i log.")
 
     # ── /log ───────────────────────────────────────────────────────────────
 
@@ -155,7 +223,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return
 
         if not await is_authorized_admin(event, client):
-           return await event.reply("❌ Non sei autorizzato.")
+            return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
         rows = db.list_users(chat.id)
@@ -165,7 +233,8 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         lines = ["📋 <b>Log utenti:</b>"]
         for row in rows:
             ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(row["updated_at"]))
-            lines.append(f"  <code>{row['user_id']}</code> → {row['status']} ({ts})")
+            nick = row["username"] or str(row["user_id"])
+            lines.append(f"  {nick} — <code>{row['user_id']}</code> → {row['status']} ({ts})")
 
         msg = "\n".join(lines)
         if len(msg) > 4000:
@@ -181,7 +250,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return
 
         if not await is_authorized_admin(event, client):
-           return await event.reply("❌ Non sei autorizzato.")
+            return await event.reply("❌ Non sei autorizzato.")
 
         groups = db.list_groups()
         if not groups:
@@ -191,4 +260,37 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         for g in groups:
             ts = time.strftime("%Y-%m-%d", time.localtime(g["registered_at"]))
             lines.append(f"  <code>{g['group_id']}</code> — {g['group_name']} (dal {ts})")
+        await event.reply("\n".join(lines), parse_mode="html")
+
+    # ── /utenti ─────────────────────────────────────────────────────────────
+
+    @client.on(events.NewMessage(pattern=r"/utenti"))
+    async def cmd_utenti(event):
+
+        if event.is_private:
+            return
+
+        if not await is_authorized_admin(event, client):
+            return await event.reply("❌ Non sei autorizzato.")
+
+        chat = await event.get_chat()
+        rows = db.list_users(chat.id)
+        if not rows:
+            return await event.reply("Nessun utente registrato per questo gruppo.")
+
+        lines = ["👥 <b>Utenti registrati (non admin):</b>"]
+        count = 0
+        for row in rows:
+            if row["status"] == "admin":
+                continue
+            nick = row["username"] or str(row["user_id"])
+            lines.append(f"• {nick} — <code>{row['user_id']}</code> [{row['status']}]")
+            count += 1
+            if len("\n".join(lines)) > 3800:
+                lines.append("… (lista troncata)")
+                break
+
+        if count == 0:
+            return await event.reply("Nessun utente non-admin registrato per questo gruppo.")
+
         await event.reply("\n".join(lines), parse_mode="html")

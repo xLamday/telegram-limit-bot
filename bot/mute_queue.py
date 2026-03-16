@@ -10,6 +10,8 @@ Design:
   per errori transitori (max MAX_RETRIES tentativi)
 """
 
+from __future__ import annotations
+
 import asyncio
 from loggerinfo import LoggerInfo
 import random
@@ -42,6 +44,7 @@ _JITTER_MAX = 1.5
 
 @dataclass
 class MuteTask:
+    """Unità di lavoro: applicare un mute (con eventuale risposta all'evento sorgente)."""
     chat: object
     user_id: int
     group_id: int
@@ -50,17 +53,20 @@ class MuteTask:
 
 class MuteQueue:
     def __init__(self, client: TelegramClient):
+        """Coda in-memory per serializzare/limitare edit_permissions verso Telegram."""
         self._client = client
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._queue: asyncio.Queue[MuteTask] = asyncio.Queue()
         # Semaphore creato in run() dopo che il loop è già avviato
         self._sem: Optional[asyncio.Semaphore] = None
         # Lock globale per pausare tutto durante un FloodWait prolungato
         self._flood_lock: Optional[asyncio.Lock] = None
 
     async def enqueue(self, task: MuteTask):
+        """Accoda un nuovo mute (non blocca l'esecuzione del chiamante)."""
         await self._queue.put(task)
 
     async def run(self):
+        """Loop principale: estrae task e li processa in background con rate limiting."""
         self._sem = asyncio.Semaphore(_SEMAPHORE_LIMIT)
         self._flood_lock = asyncio.Lock()
         logger.info(f"MuteQueue avviata (semaphore={_SEMAPHORE_LIMIT}).")
@@ -71,6 +77,7 @@ class MuteQueue:
             asyncio.create_task(self._safe_process(task))
 
     async def _safe_process(self, task: MuteTask):
+        """Wrapper: assicura che un'eccezione non rompa il loop e chiuda il task."""
         try:
             await self._process(task)
         except Exception as e:
@@ -130,6 +137,7 @@ class MuteQueue:
         logger.error(f"❌ Mute fallito definitivamente per user {task.user_id} dopo {_MAX_RETRIES} tentativi.")
 
     async def _send_reply(self, task: MuteTask):
+        """Prova a rispondere al messaggio che ha triggerato il mute (best effort)."""
         try:
             sender = await task.reply_event.get_sender()
             name = getattr(sender, "first_name", str(task.user_id))

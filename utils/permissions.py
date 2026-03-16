@@ -2,6 +2,8 @@
 Utility per la gestione dei permessi Telegram.
 """
 
+from __future__ import annotations
+
 from loggerinfo import LoggerInfo
 import time
 from config.settings import CFG
@@ -12,6 +14,7 @@ from telethon.tl.functions.channels import EditAdminRequest, GetParticipantReque
 from telethon.tl.types import (
     ChannelParticipantAdmin,
     ChannelParticipantCreator,
+    ChannelParticipantSelf,
     ChatAdminRights,
     ChatBannedRights,
 )
@@ -20,6 +23,7 @@ logger = LoggerInfo("antispam.utils.permissions").get_logger()
 
 
 def mute_rights(hours: int) -> ChatBannedRights:
+    """Helper per creare diritti di 'mute' temporaneo."""
     return ChatBannedRights(
         until_date=int(time.time()) + hours * 3600,
         send_messages=True,
@@ -36,40 +40,55 @@ async def is_admin(client: TelegramClient, chat, user_id: int) -> bool:
     """
     try:
         p = await client(GetParticipantRequest(chat, user_id))
-        return isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
+        # Nel contesto di un userbot, ChannelParticipantSelf implica che l'account
+        # corrente è nel gruppo; se il controllo è su uno degli admin configurati,
+        # lo consideriamo admin a tutti gli effetti.
+        return isinstance(
+            p.participant,
+            (ChannelParticipantAdmin, ChannelParticipantCreator, ChannelParticipantSelf),
+        )
     except UserNotParticipantError:
         return False
     except Exception as e:
         logger.warning(f"Errore controllo admin per {user_id}: {e}")
         return True  # fail-safe
 
-async def is_authorized_admin(event, client) -> bool:
+async def is_authorized_admin(event, client: TelegramClient) -> bool:
+    """
+    Ritorna True se l'utente che ha inviato l'evento è autorizzato.
+
+    Supporta il caso "admin anonimo" (sender_id None oppure uguale al chat_id):
+    in quel caso verifica se almeno uno degli `CFG.admin_ids` è admin del gruppo.
+    """
 
     if event.is_private:
-        return
+        return False
 
     sender_id = event.sender_id
     chat_id = event.chat_id
 
     # Caso anonimo: sender_id è None OPPURE uguale al chat_id
-    logger.debug(f"[AUTH] sender_id={sender_id} | chat_id={chat_id} | admin_id={CFG.admin_id}")
+    logger.debug(f"[AUTH] sender_id={sender_id} | chat_id={chat_id} | admin_ids={CFG.admin_ids}")
 
 
-    if sender_id in CFG.admin_id:
+    if CFG.is_superadmin(sender_id):
         logger.debug("[AUTH] ✅ Match diretto sender_id == admin_id")
         return True
 
     if sender_id is None or sender_id == chat_id:
         logger.debug("[AUTH] 🎭 Sender anonimo rilevato, verifico se admin_id è admin del gruppo...")
-        try:
-            p = await client(GetParticipantRequest(chat_id, CFG.admin_id))
-            logger.debug(f"[AUTH] Participant trovato: {p.participant}")
-            result = isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
-            logger.debug(f"[AUTH] È admin/creator? {result}")
-            return result
-        except Exception as e:
-            logger.debug(f"[AUTH] ❌ Eccezione: {e}")
-            return False
+        for admin_id in CFG.iter_admin_ids():
+            try:
+                p = await client(GetParticipantRequest(chat_id, admin_id))
+                participant = p.participant
+                result = isinstance(participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
+                logger.debug(f"[AUTH] admin_id={admin_id} → {type(participant).__name__} | is_admin={result}")
+                if result:
+                    return True
+            except Exception as e:
+                logger.debug(f"[AUTH] admin_id={admin_id} ❌ Eccezione: {e}")
+                continue
+        return False
 
     logger.debug(f"[AUTH] ❌ Nessun caso matched")
     return False

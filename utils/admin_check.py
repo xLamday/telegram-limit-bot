@@ -6,8 +6,9 @@ Verifica che il bot (userbot) sia admin in tutti i gruppi registrati.
 - Può essere chiamato all'avvio e/o schedulato periodicamente
 """
 
+from __future__ import annotations
+
 from loggerinfo import LoggerInfo
-from typing import Optional
 
 from telethon import TelegramClient
 from telethon.errors import ChatAdminRequiredError, ChannelPrivateError, FloodWaitError
@@ -15,7 +16,6 @@ from telethon.tl.functions.channels import GetParticipantRequest
 from telethon.tl.types import (
     ChannelParticipantAdmin,
     ChannelParticipantCreator,
-    ChannelParticipantSelf,
 )
 
 from config.settings import CFG
@@ -93,17 +93,20 @@ async def _check_single_group(
 
 
 async def _notify_admin(client: TelegramClient, group_id: int, group_name: str):
-    """Invia un messaggio privato all'admin segnalando il problema."""
+    """Invia un messaggio privato agli admin configurati segnalando il problema."""
     try:
-        await client.send_message(
-            CFG.admin_id,
-            f"⚠️ <b>Attenzione</b>\n\n"
-            f"Non sono admin nel gruppo registrato:\n"
-            f"• <b>{group_name}</b> (<code>{group_id}</code>)\n\n"
-            f"Non potrò mutare nuovi utenti in questo gruppo finché "
-            f"non mi vengono assegnati i permessi di admin.",
-            parse_mode="html",
-        )
-        logger.info(f"Notifica admin inviata per gruppo {group_id}.")
+        sent = 0
+        for admin_id in CFG.iter_admin_ids():
+            await client.send_message(
+                admin_id,
+                f"⚠️ <b>Attenzione</b>\n\n"
+                f"Non sono admin nel gruppo registrato:\n"
+                f"• <b>{group_name}</b> (<code>{group_id}</code>)\n\n"
+                f"Non potrò mutare nuovi utenti in questo gruppo finché "
+                f"non mi vengono assegnati i permessi di admin.",
+                parse_mode="html",
+            )
+            sent += 1
+        logger.info(f"Notifica admin inviata per gruppo {group_id} (destinatari={sent}).")
     except Exception as e:
         logger.error(f"Impossibile notificare admin per gruppo {group_id}: {e}")
