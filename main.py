@@ -17,9 +17,28 @@ logger = LoggerInfo(name="main").get_logger()
 
 async def main():
     """Avvia il client Telethon, registra handler e resta in ascolto finché non disconnesso."""
-    if CFG.api_id == 0 or not CFG.api_hash:
+
+    # Validazione config di sicurezza: blocca avvio se i dati sensibili sono mancanti/errati.
+    api_id_str = str(CFG.api_id)
+    errors: list[str] = []
+
+    if CFG.api_id <= 0:
+        errors.append("TELEGRAM_API_ID mancante o non valido (deve essere un intero > 0).")
+    elif len(api_id_str) < 8:
+        errors.append("TELEGRAM_API_ID troppo corto (almeno 8 cifre).")
+
+    if not CFG.api_hash:
+        errors.append("TELEGRAM_API_HASH mancante (stringa non vuota).")
+    elif len(CFG.api_hash) < 32:
+        errors.append("TELEGRAM_API_HASH troppo corto (almeno 32 caratteri).")
+
+    if not any(CFG.iter_admin_ids()):
+        errors.append("TELEGRAM_ADMIN_IDS non configurato (almeno un ID admin richiesto).")
+
+    if errors:
         logger.error(
-            "Config mancante: impostare TELEGRAM_API_ID e TELEGRAM_API_HASH (vedi config/settings.py)."
+            "Configurazione non valida. Crea/aggiorna il file .env "
+            "(puoi partire da .env.sample):\n- " + "\n- ".join(errors)
         )
         return
 

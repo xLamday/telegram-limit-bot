@@ -204,11 +204,11 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             db.set_user(chat.id, user.id, "admin", _display_name(user))
             # Rimuove subito il mute (se presente)
             await client.edit_permissions(chat, user.id, send_messages=True)
-            await client.edit_admin(chat, user.id, is_admin=True)
+            await client.edit_admin(chat, user.id, is_admin=True, anonymous=False)
             await event.reply(f"✅ {user.first_name} ora è registrato come admin ed è stato smutato.")
         except FloodWaitError as e:
-            await asyncio.sleep(e.seconds)
-            await event.reply("⚠️ Rate limit Telegram: riprova tra qualche secondo.")
+            await asyncio.sleep(e.seconds * 2)
+            await logger.error(f"⚠️ Rate limit Telegram: riprova tra {e.seconds * 2}.")
         except Exception:
             logger.exception("Errore /aggiungi_admin", extra={"chat_id": chat.id, "target": target})
             await event.reply("⚠️ Errore durante il comando. Controlla i log.")

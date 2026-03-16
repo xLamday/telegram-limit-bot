@@ -12,6 +12,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+/dependencies
 eggs/
 .eggs/
 lib/
@@ -165,6 +166,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.sample
 .venv
 env/
 venv/

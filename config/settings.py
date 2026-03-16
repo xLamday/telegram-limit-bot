@@ -6,7 +6,43 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import os
+from pathlib import Path
 from typing import Iterable
+
+from dotenv import load_dotenv
+
+
+def _ensure_env_sample() -> None:
+    """
+    Crea un file .env.sample con placeholder se non esiste.
+
+    Non crea/modifica mai il vero .env, lascia che sia l'utente a copiarlo.
+    """
+    sample_path = Path(".env.sample")
+    if sample_path.exists():
+        return
+
+    sample_content = """# Esempio di configurazione per il bot antispam
+#
+# Copia questo file in `.env` e sostituisci i valori con quelli reali.
+
+TELEGRAM_API_ID=123456789        # intero, almeno 8 cifre
+TELEGRAM_API_HASH=00000000000000000000000000000000  # stringa, almeno 32 caratteri
+TELEGRAM_SESSION=antispam
+TELEGRAM_ADMIN_IDS=961492841     # CSV di ID: 111,222,333
+
+ANTISPAM_DB_PATH=antispam.db
+ANTISPAM_MUTE_HOURS=72
+ANTISPAM_MUTE_RATE_LIMIT=1.5
+ANTISPAM_DEDUP_WINDOW=12.5
+"""
+    sample_path.write_text(sample_content, encoding="utf-8")
+
+
+_ensure_env_sample()
+# Carica variabili da .env (se presente) senza sovrascrivere quelle già
+# presenti nell'ambiente.
+load_dotenv(dotenv_path=".env", override=False)
 
 @dataclass
 class Config:
@@ -29,15 +65,13 @@ class Config:
     """
 
     # Credenziali Telegram — ottieni da https://my.telegram.org
-    # Nota: per evitare segreti nel repo, preferisci variabili d'ambiente.
-    # I default qui sotto sono un fallback locale e possono essere rimossi
-    # prima di pubblicare il progetto.
-    api_id: int = 26831785
-    api_hash: str = "46f5f5e61c5ca3f67796c237d5a00260"
+    # I default sono volutamente "vuoti": l'utente DEVE valorizzarli via env.
+    api_id: int = 0
+    api_hash: str = ""
     session_name: str = "antispam"
 
-    # ID Telegram dell'amministratore del bot
-    admin_ids: list[int] = field(default_factory=lambda: [961492841])
+    # ID Telegram degli amministratori del bot
+    admin_ids: list[int] = field(default_factory=list)
 
     # Percorso del database SQLite
     db_path: str = "antispam.db"
@@ -91,15 +125,17 @@ class Config:
                     continue
             return ids
 
+        base = cls()
+
         cfg = cls(
-            api_id=_get_int("TELEGRAM_API_ID", cls().api_id),
-            api_hash=_get_str("TELEGRAM_API_HASH", cls().api_hash),
-            session_name=_get_str("TELEGRAM_SESSION", cls().session_name),
-            admin_ids=_parse_admin_ids(os.getenv("TELEGRAM_ADMIN_IDS")) or list(cls().admin_ids),
-            db_path=_get_str("ANTISPAM_DB_PATH", cls().db_path),
-            mute_hours=_get_int("ANTISPAM_MUTE_HOURS", cls().mute_hours),
-            mute_rate_limit=_get_float("ANTISPAM_MUTE_RATE_LIMIT", cls().mute_rate_limit),
-            dedup_window=_get_float("ANTISPAM_DEDUP_WINDOW", cls().dedup_window),
+            api_id=_get_int("TELEGRAM_API_ID", base.api_id),
+            api_hash=_get_str("TELEGRAM_API_HASH", base.api_hash),
+            session_name=_get_str("TELEGRAM_SESSION", base.session_name),
+            admin_ids=_parse_admin_ids(os.getenv("TELEGRAM_ADMIN_IDS")) or list(base.admin_ids),
+            db_path=_get_str("ANTISPAM_DB_PATH", base.db_path),
+            mute_hours=_get_int("ANTISPAM_MUTE_HOURS", base.mute_hours),
+            mute_rate_limit=_get_float("ANTISPAM_MUTE_RATE_LIMIT", base.mute_rate_limit),
+            dedup_window=_get_float("ANTISPAM_DEDUP_WINDOW", base.dedup_window),
         )
         return cfg
 
