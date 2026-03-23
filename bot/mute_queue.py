@@ -33,7 +33,7 @@ from db import db
 logger = LoggerInfo("antispam.mute_queue").get_logger()
 
 # Concorrenza massima verso Telegram (quante edit_permissions in parallelo)
-_SEMAPHORE_LIMIT = 3
+_SEMAPHORE_LIMIT = 1
 # Tentativi massimi per errori non-flood
 _MAX_RETRIES = 4
 # Base del backoff esponenziale in secondi
@@ -110,11 +110,14 @@ class MuteQueue:
             except FloodWaitError as e:
                 # FloodWait: acquisisce il flood_lock per bloccare TUTTI i worker
                 # finché Telegram non è pronto a ricevere richieste
-                wait = e.seconds + 5
-                logger.warning(f"⏳ FloodWait {wait}s — pausa globale della coda.")
+                wait = e.seconds
+                logger.warning(f"⏳ FloodWait {wait}s — pausa globale della coda (NO BACKOFF)")
                 if not self._flood_lock.locked():
                     async with self._flood_lock:
-                        await asyncio.sleep(wait)
+                        jitter = random.uniform(0, _JITTER_MAX)
+                        backoff = _BACKOFF_BASE ** e + jitter
+                        logger.warning(f"⏳ FloodWait {backoff}s — pausa globale della coda (CON BACKOFF), attendo {backoff} secondi...")
+                        await asyncio.sleep(backoff)
                 else:
                     await asyncio.sleep(wait)
                 # Non brucia un tentativo: il flood non è colpa nostra
@@ -125,14 +128,7 @@ class MuteQueue:
                 return
 
             except Exception as e:
-                jitter = random.uniform(0, _JITTER_MAX)
-                backoff = _BACKOFF_BASE ** attempt + jitter
-                logger.warning(
-                    f"⚠️ Errore mute {task.user_id} "
-                    f"(attempt {attempt + 1}/{_MAX_RETRIES}): {e} "
-                    f"— retry in {backoff:.1f}s"
-                )
-                await asyncio.sleep(backoff)
+                continue
 
         logger.error(f"❌ Mute fallito definitivamente per user {task.user_id} dopo {_MAX_RETRIES} tentativi.")
 
