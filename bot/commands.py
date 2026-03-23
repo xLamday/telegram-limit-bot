@@ -6,13 +6,13 @@ from loggerinfo import LoggerInfo
 import time
 
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, FreshChangeAdminsForbiddenError
 from telethon.tl.types import ChannelParticipantsAdmins as _ChannelParticipantsAdmins
 import asyncio
 
 from config.settings import CFG
 from db import db
-from utils.permissions import imposta_anonimo, is_authorized_admin
+from utils.permissions import imposta_anonimo, is_admin, is_authorized_admin
 from bot.mute_queue import MuteQueue, MuteTask
 
 
@@ -75,8 +75,6 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         async for admin in client.iter_participants(
             chat, filter=_ChannelParticipantsAdmins()
         ):
-            if admin.bot:
-                continue
             admin_ids.add(admin.id)
             logger.debug(f"Admin trovato: {admin.id} ({getattr(admin, 'first_name', '?')})")
 
@@ -130,6 +128,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         if not await is_authorized_admin(event, client):
             return await event.reply("❌ Non sei autorizzato.")
+
 
         chat = await event.get_chat()
         raw_target = event.pattern_match.group(1).strip()
@@ -209,6 +208,10 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds * 2)
             await logger.error(f"⚠️ Rate limit Telegram: riprova tra {e.seconds * 2}.")
+
+        except FreshChangeAdminsForbiddenError:
+            logger.exception(f"Errore /aggiungi_admin", extra={"chat,id": chat.id, "target": target})
+            await event.reply("Errore durante il comando: ho effettuato il login da poco, telegram mi limita i permessi.")
         except Exception:
             logger.exception("Errore /aggiungi_admin", extra={"chat_id": chat.id, "target": target})
             await event.reply("⚠️ Errore durante il comando. Controlla i log.")
