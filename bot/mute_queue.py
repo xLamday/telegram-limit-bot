@@ -35,11 +35,13 @@ logger = LoggerInfo("antispam.mute_queue").get_logger()
 # Concorrenza massima verso Telegram (quante edit_permissions in parallelo)
 _SEMAPHORE_LIMIT = 1
 # Tentativi massimi per errori non-flood
-_MAX_RETRIES = 4
+_MAX_RETRIES = 3
 # Base del backoff esponenziale in secondi
 _BACKOFF_BASE = 2.0
+# Max backoff esponenziale cappato 
+_BACKOFF_MAX = 60
 # Jitter massimo aggiunto al backoff (evita thundering herd)
-_JITTER_MAX = 1.5
+_JITTER_MAX = 10
 
 
 @dataclass
@@ -115,7 +117,7 @@ class MuteQueue:
                 if not self._flood_lock.locked():
                     async with self._flood_lock:
                         jitter = random.uniform(0, _JITTER_MAX)
-                        backoff = _BACKOFF_BASE ** e + jitter
+                        backoff = wait + min(_BACKOFF_BASE ** attempt, _BACKOFF_MAX) + jitter
                         logger.warning(f"⏳ FloodWait {backoff}s — pausa globale della coda (CON BACKOFF), attendo {backoff} secondi...")
                         await asyncio.sleep(backoff)
                 else:

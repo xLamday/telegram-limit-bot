@@ -133,6 +133,9 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         chat = await event.get_chat()
         raw_target = event.pattern_match.group(1).strip()
 
+        if not db.group_exists(chat.id):
+            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+
         # Supporta sia username che ID numerico
         if raw_target.lstrip("-").isdigit():
             target = int(raw_target)
@@ -150,7 +153,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
     # ── /free ──────────────────────────────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"/free (.+)"))
+    @client.on(events.NewMessage(pattern=r"/unlimit (.+)"))
     async def cmd_free(event):
         if event.is_private:
             return
@@ -160,6 +163,10 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         chat = await event.get_chat()
         raw_target = event.pattern_match.group(1).strip()
+
+        if not db.group_exists(chat.id):
+            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            
 
         # Supporta sia username che ID numerico
         if raw_target.lstrip("-").isdigit():
@@ -191,6 +198,10 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         chat = await event.get_chat()
         raw_target = event.pattern_match.group(1).strip()
+    
+        if not db.group_exists(chat.id):
+            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            
 
         # Supporta sia username che ID numerico, come /free e /limita
         if raw_target.lstrip("-").isdigit():
@@ -230,6 +241,11 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         chat = await event.get_chat()
         rows = db.list_users(chat.id)
+
+        if not db.group_exists(chat.id):
+            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            
+
         if not rows:
             return await event.reply("Nessun utente registrato per questo gruppo.")
 
@@ -278,6 +294,12 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         chat = await event.get_chat()
         rows = db.list_users(chat.id)
+
+
+        if not db.group_exists(chat.id):
+            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+
+ 
         if not rows:
             return await event.reply("Nessun utente registrato per questo gruppo.")
 
