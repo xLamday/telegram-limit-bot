@@ -62,10 +62,17 @@ class MuteQueue:
         self._sem: Optional[asyncio.Semaphore] = None
         # Lock globale per pausare tutto durante un FloodWait prolungato
         self._flood_lock: Optional[asyncio.Lock] = None
+        self._pending: set[tuple[int, int]] = set()
 
     async def enqueue(self, task: MuteTask):
         """Accoda un nuovo mute (non blocca l'esecuzione del chiamante)."""
+        key = (task.group_id, task.user_id)
+        if key in self._pending:
+            logger.debug(f"Task già in coda per {task.user_id} in gruppo {task.group_id}")
+            return False
+        self._pending.add(key)
         await self._queue.put(task)
+        return True
 
     async def run(self):
         """Loop principale: estrae task e li processa in background con rate limiting."""
@@ -85,6 +92,8 @@ class MuteQueue:
         except Exception as e:
             logger.error(f"Errore imprevisto per user {task.user_id}: {e}")
         finally:
+            key = (task.group_id, task.user_id)
+            self._pending.discard(key)
             self._queue.task_done()
 
     async def _process(self, task: MuteTask):
@@ -95,6 +104,15 @@ class MuteQueue:
 
             try:
                 async with self._sem:
+
+                    current_status = db.get_user_status(task.group_id, task.user_id)
+                    if current_status in ("free", "admin"):
+                        logger.info(
+                            f"Skip mute per {task.user_id} in gruppo {task.group_id}: "
+                            f"stato attuale '{current_status}', task annullato."
+                        )
+                        return
+
                     await self._client.edit_permissions(
                         task.chat,
                         task.user_id,

@@ -45,14 +45,6 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
         if user is None:
             return
 
-        # Deduplicazione: evita di accodare N mute per la stessa persona
-        # se manda più messaggi in rapida successione
-        dedup_key = (chat.id, user.id)
-        now = time.monotonic()
-        if now - _last_event[dedup_key] < CFG.dedup_window:
-            return
-        _last_event[dedup_key] = now
-
         # Ignora completamente i gruppi NON registrati nel DB.
         # Il bot opera solo dove è stato esplicitamente attivato con /registragruppo.
         if not db.group_exists(chat.id):
@@ -72,6 +64,15 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
 
         if status in ("free", "admin"):
             return
+
+
+        # Deduplicazione: evita di accodare N mute per la stessa persona
+        # se manda più messaggi in rapida successione
+        dedup_key = (chat.id, user.id)
+        now = time.monotonic()
+        if now - _last_event[dedup_key] < CFG.dedup_window:
+            return
+        _last_event[dedup_key] = now
 
         # Utente limited → accoda mute
         logger.info(f"Messaggio da utente limited {user.id} in gruppo {chat.id} — accodato mute.")
