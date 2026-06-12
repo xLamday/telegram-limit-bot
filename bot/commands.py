@@ -87,7 +87,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         # Salva tutti gli admin nel DB in una transazione unica
         if admin_ids:
             db.bulk_set_admins(chat.id, list(admin_ids))
-        logger.info(f"Gruppo {chat.id}: {len(admin_ids)} admin registrati.")
+        logger.info(f"Gruppo {chat.id} ('{chat.title}'): {len(admin_ids)} admin registrati.")
 
         
         await event.reply(
@@ -107,7 +107,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             if existing in ("free", "admin"):
                 continue  # già esenti
             db.set_user(chat.id, user.id, "limited", _display_name(user))
-            await mute_queue.enqueue(MuteTask(chat, user.id, chat.id))
+            await mute_queue.enqueue(MuteTask(chat, user.id, chat.id, user_display=_display_name(user)))
             muted_count += 1
 
         await event.reply(
@@ -135,6 +135,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         if not db.group_exists(chat.id):
             logger.warning(f"Il gruppo {chat.title} con ID: {chat.id} non è registrato nel db!")
+            return await event.reply("❌ Questo gruppo non è registrato. Usa /registragruppo prima.")
 
         # Supporta sia username che ID numerico
         if raw_target.lstrip("-").isdigit():
@@ -145,7 +146,11 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         try:
             user = await client.get_entity(target)
             db.set_user(chat.id, user.id, "limited", _display_name(user))
-            await mute_queue.enqueue(MuteTask(chat, user.id, chat.id))
+            await mute_queue.enqueue(MuteTask(chat, user.id, chat.id, user_display=_display_name(user)))
+            logger.info(
+                f"🔇 /limita: {_display_name(user)} ({user.id}) "
+                f"in '{chat.title}' ({chat.id})"
+            )
             await event.reply(f"🔇 {user.first_name} limitato per {CFG.mute_hours} ore.")
         except Exception:
             logger.exception("Errore /limita", extra={"chat_id": chat.id, "target": target})
@@ -166,7 +171,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         if not db.group_exists(chat.id):
             logger.warning(f"Il gruppo {chat.title} con ID: {chat.id} non è registrato nel db!")
-            
+            return await event.reply("❌ Questo gruppo non è registrato. Usa /registragruppo prima.")
 
         # Supporta sia username che ID numerico
         if raw_target.lstrip("-").isdigit():
@@ -178,6 +183,10 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             user = await client.get_entity(target)
             db.set_user(chat.id, user.id, "free", _display_name(user))
             await client.edit_permissions(chat, user.id, send_messages=True)
+            logger.info(
+                f"✅ /free: {_display_name(user)} ({user.id}) "
+                f"liberato in '{chat.title}' ({chat.id})"
+            )
             await event.reply(f"✅ {user.first_name} liberato permanentemente.")
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds)
@@ -198,10 +207,10 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         chat = await event.get_chat()
         raw_target = event.pattern_match.group(1).strip()
-    
+
         if not db.group_exists(chat.id):
-            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
-            
+            logger.warning(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            return await event.reply("❌ Questo gruppo non è registrato. Usa /registragruppo prima.")
 
         # Supporta sia username che ID numerico, come /free e /limita
         if raw_target.lstrip("-").isdigit():
@@ -215,6 +224,10 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             # Rimuove subito il mute (se presente)
             await client.edit_permissions(chat, user.id, send_messages=True)
             await client.edit_admin(chat, user.id, is_admin=True, anonymous=False)
+            logger.info(
+                f"✅ /aggiungi_admin: {_display_name(user)} ({user.id}) "
+                f"promosso admin in '{chat.title}' ({chat.id})"
+            )
             await event.reply(f"✅ {user.first_name} ora è registrato come admin ed è stato smutato.")
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds * 2)
@@ -240,12 +253,12 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-        rows = db.list_users(chat.id)
 
         if not db.group_exists(chat.id):
-            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
-            
+            logger.warning(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            return await event.reply("❌ Questo gruppo non è registrato.")
 
+        rows = db.list_users(chat.id)
         if not rows:
             return await event.reply("Nessun utente registrato per questo gruppo.")
 
@@ -293,13 +306,12 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
-        rows = db.list_users(chat.id)
-
 
         if not db.group_exists(chat.id):
-            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            logger.warning(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            return await event.reply("❌ Questo gruppo non è registrato.")
 
- 
+        rows = db.list_users(chat.id)
         if not rows:
             return await event.reply("Nessun utente registrato per questo gruppo.")
 

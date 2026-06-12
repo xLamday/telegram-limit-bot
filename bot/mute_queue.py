@@ -51,6 +51,7 @@ class MuteTask:
     user_id: int
     group_id: int
     reply_event: Optional[object] = field(default=None)
+    user_display: str = ""  # nome leggibile per i log (es. "@mario" o "Mario Rossi")
 
 
 class MuteQueue:
@@ -68,7 +69,12 @@ class MuteQueue:
         """Accoda un nuovo mute (non blocca l'esecuzione del chiamante)."""
         key = (task.group_id, task.user_id)
         if key in self._pending:
-            logger.warning(f"Task già in coda per {task.user_id} in gruppo {task.group_id}")
+            group_name = getattr(task.chat, "title", None) or str(task.group_id)
+            user_label = f"{task.user_display} ({task.user_id})" if task.user_display else str(task.user_id)
+            logger.warning(
+                f"Task già in coda per {user_label} "
+                f"in '{group_name}' ({task.group_id})"
+            )
             return False
         self._pending.add(key)
         await self._queue.put(task)
@@ -90,28 +96,46 @@ class MuteQueue:
         try:
             await self._process(task)
         except Exception as e:
-            logger.error(f"Errore imprevisto per user {task.user_id}: {e}")
+            group_name = getattr(task.chat, "title", None) or str(task.group_id)
+            user_label = f"{task.user_display} ({task.user_id})" if task.user_display else str(task.user_id)
+            logger.error(
+                f"Errore imprevisto per {user_label} "
+                f"in '{group_name}' ({task.group_id}): {e}"
+            )
         finally:
             key = (task.group_id, task.user_id)
             self._pending.discard(key)
             self._queue.task_done()
 
     async def _process(self, task: MuteTask):
-        for attempt in range(_MAX_RETRIES):
+        # Contatore separato: solo gli errori transitori consumano i tentativi.
+        # FloodWait NON incrementa attempt — non è colpa del task.
+        group_name = getattr(task.chat, "title", None) or str(task.group_id)
+        user_label = f"{task.user_display} ({task.user_id})" if task.user_display else str(task.user_id)
+        group_label = f"'{group_name}' ({task.group_id})"
+
+        attempt = 0
+        while attempt < _MAX_RETRIES:
             # Se c'è un flood globale in corso, aspettiamo che si sblocchi
             async with self._flood_lock:
                 pass
 
             try:
                 async with self._sem:
-
                     current_status = db.get_user_status(task.group_id, task.user_id)
                     if current_status in ("free", "admin"):
                         logger.info(
-                            f"Skip mute per {task.user_id} in gruppo {task.group_id}: "
+                            f"Skip mute per {user_label} in {group_label}: "
                             f"stato attuale '{current_status}', task annullato."
                         )
                         return
+
+                    # BUG FIX: scrivi DB PRIMA di chiamare Telegram.
+                    # Se crashiamo dopo il DB ma prima di edit_permissions,
+                    # il prossimo messaggio dell'utente rileva status='limited'
+                    # e ri-accoda il mute — nessun dato perso.
+                    # L'ordine inverso (vecchio) lasciava il DB inconsistente.
+                    db.set_user(task.group_id, task.user_id, "limited")
 
                     await self._client.edit_permissions(
                         task.chat,
@@ -120,40 +144,54 @@ class MuteQueue:
                         until_date=int(time.time()) + CFG.mute_hours * 3600,
                     )
 
-                db.set_user(task.group_id, task.user_id, "limited")
-                logger.info(f"✅ Mutato user {task.user_id} in gruppo {task.group_id}")
+                logger.info(f"✅ Mutato {user_label} in {group_label}")
 
                 if task.reply_event:
                     await self._send_reply(task)
                 return
 
             except FloodWaitError as e:
-                # FloodWait: acquisisce il flood_lock per bloccare TUTTI i worker
-                # finché Telegram non è pronto a ricevere richieste
+                # FloodWait: il primo worker acquisisce il flood_lock e dorme;
+                # gli altri si bloccano sull'`async with self._flood_lock` all'inizio
+                # del prossimo ciclo while — aspettano senza double-sleep.
                 wait = e.seconds
-                logger.warning(f"⏳ FloodWait {wait}s — pausa globale della coda (NO BACKOFF)")
+                logger.warning(f"⏳ FloodWait {wait}s — pausa globale della coda")
                 if not self._flood_lock.locked():
+                    # Nessun await tra il check e l'acquisizione: sicuro in asyncio
                     async with self._flood_lock:
                         jitter = random.uniform(0, _JITTER_MAX)
-                        backoff = wait + min(_BACKOFF_BASE ** attempt, _BACKOFF_MAX) + jitter
-                        logger.warning(f"⏳ FloodWait {backoff}s — pausa globale della coda (CON BACKOFF), attendo {backoff} secondi...")
+                        backoff = wait + jitter
+                        logger.warning(
+                            f"⏳ Pausa globale {backoff:.1f}s (worker={task.user_id})..."
+                        )
                         await asyncio.sleep(backoff)
-                else:
-                    await asyncio.sleep(wait)
-                # Non brucia un tentativo: il flood non è colpa nostra
-                continue
+                # else: il lock è già held → al prossimo ciclo ci bloccheremo su di esso
+                # NON incrementiamo attempt: il flood non è colpa del task
 
             except (UserAdminInvalidError, ChatAdminRequiredError, UserNotParticipantError):
                 logger.warning(f"🚫 Impossibile mutare {task.user_id} (admin/non-partecipante) — skip.")
                 return
 
             except Exception as e:
-                continue
+                attempt += 1
+                if attempt < _MAX_RETRIES:
+                    jitter = random.uniform(0, _JITTER_MAX)
+                    backoff = min(_BACKOFF_BASE ** attempt, _BACKOFF_MAX) + jitter
+                    logger.warning(
+                        f"Errore transitorio per {user_label} in {group_label} "
+                        f"(tentativo {attempt}/{_MAX_RETRIES}), retry in {backoff:.1f}s: {e}"
+                    )
+                    await asyncio.sleep(backoff)
 
-        logger.error(f"❌ Mute fallito definitivamente per user {task.user_id} dopo {_MAX_RETRIES} tentativi.")
+        logger.error(
+            f"❌ Mute fallito definitivamente per {user_label} "
+            f"in {group_label} dopo {_MAX_RETRIES} tentativi."
+        )
 
     async def _send_reply(self, task: MuteTask):
         """Prova a rispondere al messaggio che ha triggerato il mute (best effort)."""
+        group_name = getattr(task.chat, "title", None) or str(task.group_id)
+        user_label = f"{task.user_display} ({task.user_id})" if task.user_display else str(task.user_id)
         try:
             sender = await task.reply_event.get_sender()
             name = getattr(sender, "first_name", str(task.user_id))
@@ -161,4 +199,7 @@ class MuteQueue:
                 f"🔇 {name} limitato per {CFG.mute_hours} ore."
             )
         except Exception as e:
-            logger.warning(f"Impossibile inviare reply per {task.user_id}: {e}")
+            logger.warning(
+                f"Impossibile inviare reply per {user_label} "
+                f"in '{group_name}' ({task.group_id}): {e}"
+            )

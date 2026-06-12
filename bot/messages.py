@@ -26,6 +26,7 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
 
     @client.on(events.NewMessage)
     async def on_message(event):
+        from bot.commands import _display_name  # import locale per evitare cicli circolari
         # Ignora messaggi privati, dell'admin e del bot stesso
         if event.is_private:
             return
@@ -45,11 +46,6 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
         if user is None:
             return
 
-        # Ignora completamente i gruppi NON registrati nel DB.
-        # Il bot opera solo dove è stato esplicitamente attivato con /registragruppo.
-        if not db.group_exists(chat.id):
-            return
-
         # Salta se è admin
         if await is_admin(client, chat, user.id):
             return
@@ -58,7 +54,6 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
         status = db.get_user_status(chat.id, user.id)
         if status is None:
             # Nuovo utente in un gruppo registrato → registra come limited
-            from bot.commands import _display_name  # import locale per evitare cicli
             db.set_user(chat.id, user.id, "limited", _display_name(user))
             status = "limited"
 
@@ -75,5 +70,9 @@ def register_message_handler(client: TelegramClient, mute_queue: MuteQueue, me_i
         _last_event[dedup_key] = now
 
         # Utente limited → accoda mute
-        logger.info(f"Messaggio da utente limited {user.id} in gruppo {chat.id} — accodato mute.")
-        await mute_queue.enqueue(MuteTask(chat, user.id, chat.id, event))
+        display = _display_name(user)
+        logger.info(
+            f"Messaggio da utente limited {display} ({user.id}) "
+            f"in '{chat.title}' ({chat.id}) — accodato mute."
+        )
+        await mute_queue.enqueue(MuteTask(chat, user.id, chat.id, event, user_display=display))
