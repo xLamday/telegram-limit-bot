@@ -16,7 +16,7 @@ from utils.permissions import imposta_anonimo, is_admin, is_authorized_admin
 from bot.mute_queue import MuteQueue, MuteTask
 
 
-logger = LoggerInfo("antispam.commands").get_logger()
+logger = LoggerInfo("antispam.commands", log_file="commands.log").get_logger()
 
 
 def _display_name(user) -> str:
@@ -47,7 +47,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
                 who = getattr(sender, "first_name", None) or str(event.sender_id)
             except Exception:
                 who = str(event.sender_id)
-            logger.info(f"Utente non autorizzato ha provato /registragruppo: {who}")
+            logger.warning(f"Utente non autorizzato ha provato /registragruppo: {who}")
             return await event.reply("❌ Non sei autorizzato.")
 
         chat = await event.get_chat()
@@ -76,7 +76,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             chat, filter=_ChannelParticipantsAdmins()
         ):
             admin_ids.add(admin.id)
-            logger.debug(f"Admin trovato: {admin.id} ({getattr(admin, 'first_name', '?')})")
+            logger.info(f"Admin trovato: {admin.id} ({getattr(admin, 'first_name', '?')})")
 
         await event.reply(
             f"✅ Registrazione del canale <b>{chat.title}</b> completata\n"
@@ -116,7 +116,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             f"🔇 {muted_count} utenti accodati per mute (72h).",
             parse_mode="html",
         )
-        logger.info(f"Gruppo {chat.id}, {chat.title}: {muted_count} utenti accodati per mute.")
+        logger.warning(f"Gruppo {chat.id}, {chat.title}: {muted_count} utenti accodati per mute.")
 
     # ── /limita ────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         raw_target = event.pattern_match.group(1).strip()
 
         if not db.group_exists(chat.id):
-            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            logger.warning(f"Il gruppo {chat.title} con ID: {chat.id} non è registrato nel db!")
 
         # Supporta sia username che ID numerico
         if raw_target.lstrip("-").isdigit():
@@ -165,7 +165,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
         raw_target = event.pattern_match.group(1).strip()
 
         if not db.group_exists(chat.id):
-            logger.info(f"Il gruppo con {chat.title} e {chat.id} non è registrato nel db!")
+            logger.warning(f"Il gruppo {chat.title} con ID: {chat.id} non è registrato nel db!")
             
 
         # Supporta sia username che ID numerico
@@ -218,7 +218,7 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             await event.reply(f"✅ {user.first_name} ora è registrato come admin ed è stato smutato.")
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds * 2)
-            await logger.error(f"⚠️ Rate limit Telegram: riprova tra {e.seconds * 2}.")
+            logger.warning(f"⚠️ Rate limit Telegram: riprova tra {e.seconds * 2}.")
 
         except FreshChangeAdminsForbiddenError:
             logger.exception(f"Errore /aggiungi_admin", extra={"chat,id": chat.id, "target": target})

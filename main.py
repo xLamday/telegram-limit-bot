@@ -57,13 +57,13 @@ async def main():
     try:
         await client.run_until_disconnected()
     except KeyboardInterrupt:
-        logger.info("Shutdown richiesto.")
+        logger.warning("Shutdown richiesto.")
     finally:
         mute_task.cancel()
         with contextlib.suppress(Exception):
             await mute_task
         await client.disconnect()
-        logger.info("Client disconnesso. Bye!")
+        logger.warning("Client disconnesso. Bye!")
 
 
 if __name__ == "__main__":

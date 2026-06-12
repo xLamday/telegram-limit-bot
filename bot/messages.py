@@ -15,7 +15,7 @@ from db import db
 from utils.permissions import is_admin, is_authorized_admin
 from bot.mute_queue import MuteQueue, MuteTask
 
-logger = LoggerInfo("antispam.bot.messages").get_logger()
+logger = LoggerInfo("antispam.bot.messages", log_file="messages.log").get_logger()
 
 # Deduplicazione: (group_id, user_id) → timestamp ultimo evento processato
 _last_event: dict[tuple[int, int], float] = defaultdict(float)

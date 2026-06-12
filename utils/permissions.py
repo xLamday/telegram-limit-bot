@@ -19,8 +19,8 @@ from telethon.tl.types import (
     ChatBannedRights,
 )
 
-logger = LoggerInfo("antispam.utils.permissions").get_logger()
-
+logger = LoggerInfo("antispam.utils.permission", log_file="permissions.log").get_logger()
+logger_debug = LoggerInfo("antispam.utils.permission.debug", log_file="debug.log").get_logger()
 
 def mute_rights(hours: int) -> ChatBannedRights:
     """Helper per creare diritti di 'mute' temporaneo."""
@@ -68,29 +68,29 @@ async def is_authorized_admin(event, client: TelegramClient) -> bool:
     chat_id = event.chat_id
 
     # Caso anonimo: sender_id è None OPPURE uguale al chat_id
-    logger.debug(f"[AUTH] sender_id={sender_id} | chat_id={chat_id} | admin_ids={CFG.admin_ids}")
+    logger_debug.info(f"[AUTH] sender_id={sender_id} | chat_id={chat_id} | admin_ids={CFG.admin_ids}")
 
 
     if CFG.is_superadmin(sender_id):
-        logger.debug("[AUTH] ✅ Match diretto sender_id == admin_id")
+        logger_debug.info("[AUTH] ✅ Match diretto sender_id == admin_id")
         return True
 
     if sender_id is None or sender_id == chat_id:
-        logger.debug("[AUTH] 🎭 Sender anonimo rilevato, verifico se admin_id è admin del gruppo...")
+        logger_debug.info("[AUTH] 🎭 Sender anonimo rilevato, verifico se admin_id è admin del gruppo...")
         for admin_id in CFG.iter_admin_ids():
             try:
                 p = await client(GetParticipantRequest(chat_id, admin_id))
                 participant = p.participant
                 result = isinstance(participant, (ChannelParticipantAdmin, ChannelParticipantCreator))
-                logger.debug(f"[AUTH] admin_id={admin_id} → {type(participant).__name__} | is_admin={result}")
+                logger_debug.info(f"[AUTH] admin_id={admin_id} → {type(participant).__name__} | is_admin={result}")
                 if result:
                     return True
             except Exception as e:
-                logger.debug(f"[AUTH] admin_id={admin_id} ❌ Eccezione: {e}")
+                logger_debug.error(f"[AUTH] admin_id={admin_id} ❌ Eccezione: {e}")
                 continue
         return False
 
-    logger.debug(f"[AUTH] ❌ Nessun caso matched")
+    logger_debug.error(f"[AUTH] ❌ Nessun caso matched")
     return False
 
 async def imposta_anonimo(client: TelegramClient, chat) -> bool:

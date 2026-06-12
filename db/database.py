@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 
-logger = LoggerInfo("antispam.DB").get_logger()
+logger = LoggerInfo("antispam.database", log_file="database.log").get_logger()
 
 
 class Database:
@@ -20,7 +20,7 @@ class Database:
         self._path = path
         self._local = threading.local()
         self._init_schema()
-        logger.info(f"Database inizializzato: {path}")
+        logger.debug(f"Database inizializzato: {path}")
 
     # ── Connessione ─────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ class Database:
                 "INSERT OR REPLACE INTO groups (group_id, group_name) VALUES (?,?)",
                 (group_id, group_name),
             )
-        logger.debug(f"Gruppo upserted: {group_id} ({group_name})")
+        logger.info(f"Gruppo {group_id} ({group_name}) registrato.")
 
     def list_groups(self) -> list[sqlite3.Row]:
         """Ritorna tutti i gruppi registrati."""
@@ -117,7 +117,7 @@ class Database:
                        username=COALESCE(excluded.username, users.username)""",
                 (group_id, user_id, status, username),
             )
-        logger.debug(f"Utente {user_id} in gruppo {group_id} → {status}")
+        logger.info(f"Utente {user_id} in gruppo {group_id} → {status}")
 
     def bulk_set_admins(self, group_id: int, admin_ids: list[int]):
         """Registra una lista di admin in un'unica transazione.
@@ -131,7 +131,7 @@ class Database:
                        updated_at = strftime('%s','now')""",
                 [(group_id, uid) for uid in admin_ids],
             )
-        logger.debug(f"Gruppo {group_id}: {len(admin_ids)} admin salvati nel DB.")
+        logger.info(f"Gruppo {group_id}: {len(admin_ids)} admin salvati nel DB.")
 
     def get_user_status(self, group_id: int, user_id: int) -> Optional[str]:
         """Ritorna lo status di un utente, oppure None se non presente."""

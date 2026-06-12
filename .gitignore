@@ -27,6 +27,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+
 # Logs
 antispam.log
 
@@ -43,24 +44,20 @@ config/settings.pyjz
 
 
 # Database
-antispam.db
-antispam.db-journal
-antispam.db-wal
-antispam.db-shm
-antispam.db-trace
-antispam.db-trace-journal
-antispam.db-trace-wal
-antispam.db-trace-shm
+antispam_development.db
+antispam_development.db-journal
+antispam_development.db-wal
+antispam_development.db-shm
+antispam_development.db-trace
+antispam_development.db-trace-journal
+antispam_development.db-trace-wal
+antispam_development.db-trace-shm
 
 # Session
-antispam.session
-antispam.session-journal
-antispam.session-wal
-antispam.session-shm
-antispam.session-trace
-antispam.session-trace-journal
-antispam.session-trace-wal
-antispam.session-trace-shm
+AntiSpam_Development.session
+AntiSpam_Development.session-journal
+AntiSpam_Development.session-wal
+AntiSpam_Development.session-shm
 
 
 # PyInstaller

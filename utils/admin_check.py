@@ -22,7 +22,7 @@ from config.settings import CFG
 from db import db
 
 
-logger = LoggerInfo("antispam.utils.admin").get_logger()
+logger = LoggerInfo("antispam.utils.admin", log_file="admin_check.log").get_logger()
 
 
 async def check_admin_in_registered_groups(client: TelegramClient) -> list[int]:
@@ -50,7 +50,7 @@ async def check_admin_in_registered_groups(client: TelegramClient) -> list[int]:
             await _notify_admin(client, group_id, group_name)
 
     if problems:
-        logger.warning(f"⚠️ Non sono admin in {len(problems)} gruppo/i: {problems}")
+        logger.critical(f"⚠️ Non sono admin in {len(problems)} gruppo/i: {problems}")
     else:
         logger.info(f"✅ Admin check OK su {len(groups)} gruppo/i registrati.")
 
@@ -73,22 +73,22 @@ async def _check_single_group(
             return True
 
         # Siamo nel gruppo ma non admin
-        logger.warning(f"❌ Non admin in '{group_name}' ({group_id}) — status: {type(participant).__name__}")
+        logger.error(f"❌ Non admin in '{group_name}' ({group_id}) — status: {type(participant).__name__}")
         return False
 
     except ChatAdminRequiredError:
-        logger.warning(f"❌ ChatAdminRequiredError in '{group_name}' ({group_id})")
+        logger.error(f"❌ ChatAdminRequiredError in '{group_name}' ({group_id})")
         return False
     except ChannelPrivateError:
-        logger.warning(f"❌ Gruppo privato inaccessibile '{group_name}' ({group_id})")
+        logger.error(f"❌ Gruppo privato inaccessibile '{group_name}' ({group_id})")
         return False
     except FloodWaitError as e:
-        logger.warning(f"⏳ FloodWait {e.seconds}s durante check di '{group_name}'")
+        logger.error(f"⏳ FloodWait {e.seconds}s durante check di '{group_name}'")
         import asyncio
         await asyncio.sleep(e.seconds + 2)
         return await _check_single_group(client, me_id, group_id, group_name)
     except Exception as e:
-        logger.warning(f"❌ Errore check admin '{group_name}' ({group_id}): {e}")
+        logger.error(f"❌ Errore check admin '{group_name}' ({group_id}): {e}")
         return False
 
 

@@ -30,7 +30,7 @@ from telethon.errors import (
 from config.settings import CFG
 from db import db
 
-logger = LoggerInfo("antispam.mute_queue").get_logger()
+logger = LoggerInfo("antispam.mute_queue", log_file="mute_queue.log").get_logger()
 
 # Concorrenza massima verso Telegram (quante edit_permissions in parallelo)
 _SEMAPHORE_LIMIT = 1
@@ -68,7 +68,7 @@ class MuteQueue:
         """Accoda un nuovo mute (non blocca l'esecuzione del chiamante)."""
         key = (task.group_id, task.user_id)
         if key in self._pending:
-            logger.debug(f"Task già in coda per {task.user_id} in gruppo {task.group_id}")
+            logger.warning(f"Task già in coda per {task.user_id} in gruppo {task.group_id}")
             return False
         self._pending.add(key)
         await self._queue.put(task)
@@ -161,4 +161,4 @@ class MuteQueue:
                 f"🔇 {name} limitato per {CFG.mute_hours} ore."
             )
         except Exception as e:
-            logger.debug(f"Impossibile inviare reply per {task.user_id}: {e}")
+            logger.warning(f"Impossibile inviare reply per {task.user_id}: {e}")
