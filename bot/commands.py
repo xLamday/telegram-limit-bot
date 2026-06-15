@@ -6,7 +6,7 @@ from loggerinfo import LoggerInfo
 import time
 
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, FreshChangeAdminsForbiddenError
+from telethon.errors import FloodWaitError, FreshChangeAdminsForbiddenError, UserNotParticipantError
 from telethon.tl.types import ChannelParticipantsAdmins as _ChannelParticipantsAdmins
 import asyncio
 
@@ -184,13 +184,16 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
             db.set_user(chat.id, user.id, "free", _display_name(user))
             await client.edit_permissions(chat, user.id, send_messages=True)
             logger.info(
-                f"✅ /free: {_display_name(user)} ({user.id}) "
+                f"✅ /unlimit: {_display_name(user)} ({user.id}) "
                 f"liberato in '{chat.title}' ({chat.id})"
             )
             await event.reply(f"✅ {user.first_name} liberato permanentemente.")
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds)
             await event.reply("⚠️ Rate limit Telegram: riprova tra qualche secondo.")
+        except UserNotParticipantError:
+            logger.exception("Errore /free", extra={"chat_id": chat.id, "target": target})
+            await event.reply("⚠️ L'utente non è membro di questo gruppo.")
         except Exception:
             logger.exception("Errore /free", extra={"chat_id": chat.id, "target": target})
             await event.reply("⚠️ Errore durante il comando. Controlla i log.")
@@ -220,25 +223,29 @@ def register_commands(client: TelegramClient, mute_queue: MuteQueue):
 
         try:
             user = await client.get_entity(target)
-            db.set_user(chat.id, user.id, "admin", _display_name(user))
-            # Rimuove subito il mute (se presente)
-            await client.edit_permissions(chat, user.id, send_messages=True)
-            await client.edit_admin(chat, user.id, is_admin=True, anonymous=False)
-            logger.info(
-                f"✅ /aggiungi_admin: {_display_name(user)} ({user.id}) "
-                f"promosso admin in '{chat.title}' ({chat.id})"
-            )
-            await event.reply(f"✅ {user.first_name} ora è registrato come admin ed è stato smutato.")
+            try:
+                # Rimuove subito il mute (se presente)
+                await client.edit_permissions(chat, user.id, send_messages=True)
+                await client.edit_admin(chat, user.id, is_admin=True, anonymous=False)
+                logger.info(
+                    f"✅ /aggiungi_admin: {_display_name(user)} ({user.id}) "
+                    f"promosso admin in '{chat.title}' ({chat.id})"
+                )
+                await event.reply(f"✅ {user.first_name} ora è registrato come admin ed è stato smutato.")
+                db.set_user(chat.id, user.id, "admin", _display_name(user))
+            except FreshChangeAdminsForbiddenError:
+                logger.error(f"Errore: FreshChangeAdminsForbiddenError in /aggiungi_admin nel canale {chat.title} ({chat.id}) con l'utente {_display_name(user)} ({user.id}). Ho effettuato il login da poco, telegram mi limita i permessi.")
+                await event.reply("Errore durante il comando: ho effettuato il login da poco, telegram mi limita i permessi.")
+                return False
         except FloodWaitError as e:
             await asyncio.sleep(e.seconds * 2)
             logger.warning(f"⚠️ Rate limit Telegram: riprova tra {e.seconds * 2}.")
-
-        except FreshChangeAdminsForbiddenError:
-            logger.exception(f"Errore /aggiungi_admin", extra={"chat,id": chat.id, "target": target})
-            await event.reply("Errore durante il comando: ho effettuato il login da poco, telegram mi limita i permessi.")
-        except Exception:
-            logger.exception("Errore /aggiungi_admin", extra={"chat_id": chat.id, "target": target})
-            await event.reply("⚠️ Errore durante il comando. Controlla i log.")
+        except UserNotParticipantError:
+            logger.error(f"Errore /aggiungi_admin nel canale {chat.title} ({chat.id}) con l'utente {_display_name(user)} ({user.id}). L'utente non è membro del gruppo.")
+            await event.reply("⚠️ L'utente non è membro di questo gruppo.")
+        except Exception as e:
+            logger.error(f"Errore /aggiungi_admin nel canale {chat.title} ({chat.id}) con l'utente {_display_name(user)} ({user.id}). Errore non gestito durante il comando {e}")
+            await event.reply("⚠️ Errore non gestito durante il comando. Controlla i log.")
 
     # ── /log ───────────────────────────────────────────────────────────────
 
