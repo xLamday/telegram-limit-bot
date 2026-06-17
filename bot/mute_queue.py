@@ -90,6 +90,7 @@ class MuteQueue:
         """Loop principale: estrae task e li processa in background con rate limiting."""
         self._sem = asyncio.Semaphore(_SEMAPHORE_LIMIT)
         self._flood_lock = asyncio.Lock()
+        self.pending_lock = asyncio.Lock()
         logger.info(f"MuteQueue avviata (semaphore={_SEMAPHORE_LIMIT}).")
 
         while True:
