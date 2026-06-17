@@ -54,6 +54,10 @@ async def main():
     register_handlers(client, mute_queue, me.id)
 
     logger.info("In ascolto… (Ctrl+C per uscire)")
+    logger.info(f"🤖 Bot avviato correttamente")
+    logger.info(f"🆔 ID BOT: {me.id}")
+    logger.info(f"👤 Username: @{me.username}")
+    logger.info(f"🆚 Versione del bot: 0.2.0")
     try:
         await client.run_until_disconnected()
     except KeyboardInterrupt:
