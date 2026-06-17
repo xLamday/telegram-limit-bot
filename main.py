@@ -57,7 +57,7 @@ async def main():
     logger.info(f"🤖 Bot avviato correttamente")
     logger.info(f"🆔 ID BOT: {me.id}")
     logger.info(f"👤 Username: @{me.username}")
-    logger.info(f"🆚 Versione del bot: 0.2.0")
+    logger.info(f"🆚 Versione del bot: 0.2.1")
     try:
         await client.run_until_disconnected()
     except KeyboardInterrupt:
