@@ -20,7 +20,7 @@ logger = LoggerInfo("antispam.commands", log_file="commands.log").get_logger()
 
 
 def _display_name(user) -> str:
-    """Restituisce un nickname leggibile a partire da un oggetto User Telethon."""
+    """Restituisce un nickname leggibile a partire da un oggetto User."""
     username = getattr(user, "username", None)
     if username:
         return f"@{username}"

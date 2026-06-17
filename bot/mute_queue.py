@@ -63,20 +63,26 @@ class MuteQueue:
         self._sem: Optional[asyncio.Semaphore] = None
         # Lock globale per pausare tutto durante un FloodWait prolungato
         self._flood_lock: Optional[asyncio.Lock] = None
+        self.pending_lock: Optional[asyncio.Lock] = None
         self._pending: set[tuple[int, int]] = set()
 
     async def enqueue(self, task: MuteTask):
         """Accoda un nuovo mute (non blocca l'esecuzione del chiamante)."""
         key = (task.group_id, task.user_id)
-        if key in self._pending:
-            group_name = getattr(task.chat, "title", None) or str(task.group_id)
-            user_label = f"{task.user_display} ({task.user_id})" if task.user_display else str(task.user_id)
-            logger.warning(
-                f"Task già in coda per {user_label} "
-                f"in '{group_name}' ({task.group_id})"
-            )
-            return False
-        self._pending.add(key)
+
+        # Proteggi l'accesso a _pending (Thread-safe)
+        async with self.pending_lock:
+            if key in self._pending:
+                group_name = getattr(task.chat, "title", None) or str(task.group_id)
+                user_label = f"{task.user_display} ({task.user_id})" if task.user_display else str(task.user_id)
+                logger.warning(
+                    f"Task già in coda per {user_label} "
+                    f"in '{group_name}' ({task.group_id})"
+                )
+                return False
+            self._pending.add(key)
+
+        # Metti in coda solo se non c'era già
         await self._queue.put(task)
         return True
 
